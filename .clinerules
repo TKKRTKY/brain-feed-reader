@@ -1,0 +1,45 @@
+project:
+  name: "Brain Feed Reader"
+  description: "電子書籍を脳に直接流し込むWebアプリケーション"
+
+documentation:
+  requirements: "./docs/要件定義書.md"
+  design: "./docs/設計書.md"
+
+tasks:
+  directory: "./tasks"
+  naming: "[0-9]+\\.md"  # 数字ベースの命名を強制 (例: 1.md, 2.md)
+
+implementation:
+  frontend:
+    framework: "Next.js"
+    language: "TypeScript"
+    components:
+      directory: "./src/components"
+      naming: "PascalCase"
+    pages:
+      directory: "./src/pages"
+      naming: "kebab-case"
+    api:
+      directory: "./src/pages/api"
+      naming: "kebab-case"
+
+testing:
+  required: true
+  framework: "Jest"
+  directory: "__tests__"
+  naming: "*.spec.tsx?"
+
+code_quality:
+  linter: "ESLint"
+  formatter: "Prettier"
+  lint_before_commit: true
+  format_before_commit: true
+
+pull_requests:
+  template: ".github/pull_request_template.md"
+  auto_link_tasks: true
+
+git:
+  branch_naming: "feature/<task-number>-<short-description>"
+  commit_message_prefix: "<task-number>:"
