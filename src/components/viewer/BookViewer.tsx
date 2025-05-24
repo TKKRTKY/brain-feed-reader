@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { BookMetadata, Chapter } from '@/types/epub';
+import ReaderLayout from './ReaderLayout';
 
 interface BookViewerProps {
   metadata: BookMetadata;
@@ -13,39 +15,41 @@ export const BookViewer = ({
   content,
   onChapterSelect,
 }: BookViewerProps) => {
-  const renderChapters = (items: Chapter[], level = 0) => {
-    return (
-      <ul className={`pl-${level * 4} list-none`}>
-        {items.map((chapter) => (
-          <li key={chapter.href} className="my-2">
-            <button
-              onClick={() => onChapterSelect(chapter.href)}
-              className="text-left hover:text-blue-600 transition-colors"
-            >
-              {chapter.title}
-            </button>
-            {chapter.children && renderChapters(chapter.children, level + 1)}
-          </li>
-        ))}
-      </ul>
-    );
+  const [currentChapter, setCurrentChapter] = useState(0);
+
+  const handleChapterSelect = (href: string) => {
+    const index = chapters.findIndex(chapter => chapter.href === href);
+    if (index !== -1) {
+      setCurrentChapter(index);
+      onChapterSelect(href);
+    }
+  };
+
+  const handlePreviousChapter = () => {
+    if (currentChapter > 0) {
+      const prevChapter = chapters[currentChapter - 1];
+      setCurrentChapter(currentChapter - 1);
+      onChapterSelect(prevChapter.href);
+    }
+  };
+
+  const handleNextChapter = () => {
+    if (currentChapter < chapters.length - 1) {
+      const nextChapter = chapters[currentChapter + 1];
+      setCurrentChapter(currentChapter + 1);
+      onChapterSelect(nextChapter.href);
+    }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-4">{metadata.title}</h1>
-        {metadata.creator && (
-          <p className="text-gray-600 mb-2">著者: {metadata.creator}</p>
-        )}
-        {metadata.publisher && (
-          <p className="text-gray-600 mb-2">出版社: {metadata.publisher}</p>
-        )}
-      </div>
-      <div className="border-t pt-4">
-        <h2 className="text-xl font-semibold mb-4">目次</h2>
-        {renderChapters(chapters)}
-      </div>
-    </div>
+    <ReaderLayout
+      metadata={metadata}
+      chapters={chapters}
+      currentChapter={currentChapter}
+      content={content}
+      onChapterSelect={handleChapterSelect}
+      onPreviousChapter={handlePreviousChapter}
+      onNextChapter={handleNextChapter}
+    />
   );
 };
