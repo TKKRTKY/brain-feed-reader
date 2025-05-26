@@ -1,6 +1,7 @@
 import React from 'react';
-import sanitizeHtml from 'sanitize-html';
 import { BookMetadata, Chapter } from '@/types/epub';
+import ContentView from './ContentView';
+import SummarySection from '../summary/SummarySection';
 
 interface ReaderLayoutProps {
   metadata: BookMetadata;
@@ -61,37 +62,16 @@ const ReaderLayout: React.FC<ReaderLayoutProps> = ({
           <h2 className="text-2xl font-bold mb-6">
             {chapters[currentChapter]?.title}
           </h2>
-          <article className="prose prose-lg max-w-none mb-8 overflow-x-auto">
-            {chapters[currentChapter] && (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: sanitizeHtml(content[chapters[currentChapter].href] || '', {
-                    allowedTags: [
-                      ...sanitizeHtml.defaults.allowedTags,
-                      'img',
-                      'link',
-                      'meta',
-                    ],
-                    allowedAttributes: {
-                      ...sanitizeHtml.defaults.allowedAttributes,
-                      img: ['src', 'alt', 'title', 'style'],
-                      '*': ['style', 'class'],
-                    },
-                    allowedStyles: {
-                      '*': {
-                        'color': [/^#(0x)?[0-9a-f]+$/i, /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/],
-                        'text-align': [/^left$/, /^right$/, /^center$/],
-                        'font-size': [/^\d+(?:px|em|rem|%)$/],
-                        'margin': [/^[\d\s]+(?:px|em|rem|%)$/],
-                        'padding': [/^[\d\s]+(?:px|em|rem|%)$/],
-                      },
-                    },
-                  }),
-                }}
-                className="epub-content"
+          {chapters[currentChapter] && (
+            <>
+              <ContentView content={content[chapters[currentChapter].href] || ''} />
+              <SummarySection
+                chapters={chapters}
+                currentChapter={currentChapter}
+                content={content}
               />
-            )}
-          </article>
+            </>
+          )}
           <div className="flex justify-between items-center mt-8">
             <button
               onClick={onPreviousChapter}
