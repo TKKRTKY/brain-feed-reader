@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Chapter } from '@/types/epub';
 import RangeSelector from './RangeSelector';
 import LLMSettings from './LLMSettings';
+import { useLLM } from '@/contexts/LLMContext';
 
 interface SummarySectionProps {
   chapters: Chapter[];
@@ -29,6 +30,7 @@ export default function SummarySection({
     error: null,
     summary: null,
   });
+  const { config } = useLLM();
 
   const handleSummaryRequest = async (start: string, end?: string) => {
     setSummaryState({ isLoading: true, error: null, summary: null });
@@ -69,6 +71,7 @@ export default function SummarySection({
             start,
             end,
           },
+          config,
         }),
       });
 

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface LLMConfig {
   apiEndpoint: string;
+  apiKey: string;
   modelName: string;
   temperature: number;
   maxTokens: number;
@@ -17,6 +18,7 @@ interface LLMContextType {
 
 const defaultConfig: LLMConfig = {
   apiEndpoint: 'http://localhost:11434/api/generate',
+  apiKey: '',
   modelName: 'qwen3:4b',
   temperature: 0.7,
   maxTokens: 500,
@@ -27,9 +29,22 @@ const LLMContext = createContext<LLMContextType | undefined>(undefined);
 
 export function LLMProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<LLMConfig>(() => {
-    // 環境変数から初期設定を読み込む
+    // LocalStorageから設定を読み込む
+    if (typeof window !== 'undefined') {
+      const savedConfig = localStorage.getItem('llmConfig');
+      if (savedConfig) {
+        try {
+          return JSON.parse(savedConfig);
+        } catch (e) {
+          console.error('Failed to parse saved config:', e);
+        }
+      }
+    }
+    
+    // 環境変数からの読み込みをフォールバックとして使用
     return {
       apiEndpoint: process.env.NEXT_PUBLIC_LLM_API_ENDPOINT || defaultConfig.apiEndpoint,
+      apiKey: process.env.NEXT_PUBLIC_LLM_API_KEY || defaultConfig.apiKey,
       modelName: process.env.NEXT_PUBLIC_LLM_MODEL_NAME || defaultConfig.modelName,
       temperature: Number(process.env.NEXT_PUBLIC_LLM_TEMPERATURE) || defaultConfig.temperature,
       maxTokens: Number(process.env.NEXT_PUBLIC_LLM_MAX_TOKENS) || defaultConfig.maxTokens,
@@ -38,7 +53,14 @@ export function LLMProvider({ children }: { children: ReactNode }) {
   });
 
   const updateConfig = (newConfig: Partial<LLMConfig>) => {
-    setConfig(prev => ({ ...prev, ...newConfig }));
+    setConfig(prev => {
+      const updatedConfig = { ...prev, ...newConfig };
+      // LocalStorageに保存
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('llmConfig', JSON.stringify(updatedConfig));
+      }
+      return updatedConfig;
+    });
   };
 
   return (
