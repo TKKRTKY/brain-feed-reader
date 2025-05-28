@@ -1,43 +1,43 @@
 "use client";
 
-import React from 'react';
+import React, { useRef } from 'react';
 import sanitizeHtml from 'sanitize-html';
+import TextHighlighter from './TextHighlighter';
 
 interface ContentViewProps {
   content: string;
   className?: string;
+  pageIndex: number;
 }
 
-export default function ContentView({ content, className = '' }: ContentViewProps) {
+export default function ContentView({ content, className = '', pageIndex }: ContentViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // HTMLをサニタイズ
+  const sanitizedContent = sanitizeHtml(content, {
+    allowedTags: ['p', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'img', 'a', 'strong', 'em', 'blockquote', 'code', 'pre'],
+    allowedAttributes: {
+      '*': ['style', 'class', 'id', 'data-content'],
+      'a': ['href', 'target', 'rel'],
+      'img': ['src', 'alt', 'title']
+    }
+  });
+
   return (
     <article className={`prose prose-lg max-w-none mb-8 overflow-x-auto ${className}`}>
-      <div
-        dangerouslySetInnerHTML={{
-          __html: sanitizeHtml(content, {
-            allowedTags: [
-              ...sanitizeHtml.defaults.allowedTags,
-              'img',
-              'link',
-              'meta',
-            ],
-            allowedAttributes: {
-              ...sanitizeHtml.defaults.allowedAttributes,
-              img: ['src', 'alt', 'title', 'style'],
-              '*': ['style', 'class'],
-            },
-            allowedStyles: {
-              '*': {
-                'color': [/^#(0x)?[0-9a-f]+$/i, /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/],
-                'text-align': [/^left$/, /^right$/, /^center$/],
-                'font-size': [/^\d+(?:px|em|rem|%)$/],
-                'margin': [/^[\d\s]+(?:px|em|rem|%)$/],
-                'padding': [/^[\d\s]+(?:px|em|rem|%)$/],
-              },
-            },
-          }),
-        }}
-        className="epub-content"
-      />
+      <div className="relative">
+        <div 
+          ref={containerRef} 
+          className="content-container"
+          style={{ position: 'relative' }}
+        >
+          <div 
+            data-content="true"
+            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+          />
+          <TextHighlighter containerRef={containerRef} pageIndex={pageIndex} />
+        </div>
+      </div>
     </article>
   );
 }

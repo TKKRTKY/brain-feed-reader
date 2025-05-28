@@ -1,5 +1,6 @@
 import { ChangeEvent, useCallback } from 'react';
 import type { EPubFile } from '@/types/epub';
+import { useHighlight } from '@/contexts/HighlightContext';
 
 interface FileUploadProps {
   onFileSelect: (file: EPubFile) => void;
@@ -7,6 +8,8 @@ interface FileUploadProps {
 }
 
 export const FileUpload = ({ onFileSelect, onError }: FileUploadProps) => {
+  const { setSelectedHighlightId, clearHighlights, clearSummaries } = useHighlight();
+
   const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -18,6 +21,13 @@ export const FileUpload = ({ onFileSelect, onError }: FileUploadProps) => {
     }
 
     try {
+      // 新しいファイルがアップロードされた時にデータをクリア
+      localStorage.removeItem('highlights');
+      localStorage.removeItem('summaries');
+      setSelectedHighlightId(null);
+      clearHighlights();
+      clearSummaries();
+
       const arrayBuffer = await file.arrayBuffer();
       const epubFile: EPubFile = {
         name: file.name,
@@ -28,7 +38,7 @@ export const FileUpload = ({ onFileSelect, onError }: FileUploadProps) => {
     } catch (error) {
       onError('ファイルの読み込み中にエラーが発生しました。');
     }
-  }, [onFileSelect, onError]);
+  }, [onFileSelect, onError, setSelectedHighlightId, clearHighlights, clearSummaries]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">

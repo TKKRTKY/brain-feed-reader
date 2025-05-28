@@ -3,10 +3,11 @@ import { NextApiRequest, NextApiResponse } from 'next';
 interface SummaryRequest {
   text: string;
   range: {
-    type: 'chapter' | 'range';
+    type: 'chapter' | 'range' | 'highlight';
     start: string;
     end?: string;
   };
+  config: LLMConfig;
 }
 
 interface SummaryResponse {

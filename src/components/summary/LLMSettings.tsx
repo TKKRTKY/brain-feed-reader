@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React from 'react';
 import { useLLM } from '@/contexts/LLMContext';
 
-interface LLMSettingsProps {
+export default function LLMSettings() {
   className?: string;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Chapter } from '@/types/epub';
 
 interface RangeSelectorProps {
@@ -14,173 +14,84 @@ export default function RangeSelector({
   currentChapter,
   onSubmit,
 }: RangeSelectorProps) {
-  const [isRangeMode, setIsRangeMode] = useState(false);
-  const [startChapter, setStartChapter] = useState(chapters[currentChapter]?.title || '');
-  const [endChapter, setEndChapter] = useState('');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  useEffect(() => {
-    setStartChapter(chapters[currentChapter]?.title || '');
-  }, [currentChapter, chapters]);
-
-  const handleInputChange = (value: string, isStart: boolean) => {
-    if (isStart) {
-      setStartChapter(value);
-    } else {
-      setEndChapter(value);
-    }
-
-    // サジェストの更新
-    const filtered = chapters
-      .map(ch => ch.title)
-      .filter(title => 
-        title.toLowerCase().includes(value.toLowerCase())
-      );
-    setSuggestions(filtered);
-    setIsDropdownOpen(true);
-  };
-
-  const handleSuggestionClick = (title: string, isStart: boolean) => {
-    if (isStart) {
-      setStartChapter(title);
-    } else {
-      setEndChapter(title);
-    }
-    setIsDropdownOpen(false);
-  };
+  const [startChapter, setStartChapter] = useState<string>(
+    chapters[currentChapter]?.title || chapters[0]?.title || ''
+  );
+  const [endChapter, setEndChapter] = useState<string>('');
+  const [isRange, setIsRange] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRangeMode) {
-      onSubmit(startChapter, endChapter);
-    } else {
-      onSubmit(startChapter);
-    }
+    onSubmit(startChapter, isRange ? endChapter : undefined);
   };
-
-  const presets = [
-    { label: '現在の章', value: chapters[currentChapter]?.title || '' },
-    { label: '次の章', value: chapters[currentChapter + 1]?.title || '' },
-    { label: '前の章', value: chapters[currentChapter - 1]?.title || '' },
-  ].filter(preset => preset.value);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex items-center gap-4 mb-2">
-        <label className="flex items-center">
-          <input
-            type="radio"
-            checked={!isRangeMode}
-            onChange={() => setIsRangeMode(false)}
-            className="mr-2"
-          />
-          単一の章
-        </label>
-        <label className="flex items-center">
-          <input
-            type="radio"
-            checked={isRangeMode}
-            onChange={() => setIsRangeMode(true)}
-            className="mr-2"
-          />
-          章の範囲
+      <div className="flex items-center gap-2 mb-2">
+        <input
+          type="checkbox"
+          id="isRange"
+          checked={isRange}
+          onChange={(e) => {
+            setIsRange(e.target.checked);
+            if (!e.target.checked) {
+              setEndChapter('');
+            }
+          }}
+          className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+        />
+        <label htmlFor="isRange" className="text-sm text-gray-700">
+          範囲選択
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        {presets.map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => {
-              setStartChapter(preset.value);
-              setIsRangeMode(false);
-            }}
-            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-full"
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-4">
-        <div className="relative">
-          <input
-            type="text"
+      <div className="flex flex-col gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isRange ? '開始章' : '章'}
+          </label>
+          <select
             value={startChapter}
-            onChange={(e) => handleInputChange(e.target.value, true)}
-            placeholder="章を入力または選択"
-            className="w-full px-4 py-2 border rounded-lg"
-            required
-          />
-          {isDropdownOpen && suggestions.length > 0 && (
-            <div 
-              ref={dropdownRef}
-              className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto"
-            >
-              {suggestions.map((title) => (
-                <button
-                  key={title}
-                  type="button"
-                  onClick={() => handleSuggestionClick(title, true)}
-                  className="w-full px-4 py-2 text-left hover:bg-gray-100"
-                >
-                  {title}
-                </button>
-              ))}
-            </div>
-          )}
+            onChange={(e) => setStartChapter(e.target.value)}
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            {chapters.map((chapter, index) => (
+              <option key={chapter.href} value={chapter.title}>
+                {chapter.title}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {isRangeMode && (
-          <div className="relative">
-            <input
-              type="text"
+        {isRange && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              終了章
+            </label>
+            <select
               value={endChapter}
-              onChange={(e) => handleInputChange(e.target.value, false)}
-              placeholder="終了章を入力または選択"
-              className="w-full px-4 py-2 border rounded-lg"
-              required={isRangeMode}
-            />
-            {isDropdownOpen && suggestions.length > 0 && (
-              <div 
-                ref={dropdownRef}
-                className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto"
-              >
-                {suggestions.map((title) => (
-                  <button
-                    key={title}
-                    type="button"
-                    onClick={() => handleSuggestionClick(title, false)}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-100"
-                  >
-                    {title}
-                  </button>
+              onChange={(e) => setEndChapter(e.target.value)}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            >
+              <option value="">章を選択</option>
+              {chapters
+                .slice(
+                  chapters.findIndex((ch) => ch.title === startChapter)
+                )
+                .map((chapter) => (
+                  <option key={chapter.href} value={chapter.title}>
+                    {chapter.title}
+                  </option>
                 ))}
-              </div>
-            )}
+            </select>
           </div>
         )}
       </div>
 
       <button
         type="submit"
-        className="w-full px-4 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600"
+        className="w-full py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+        disabled={isRange && !endChapter}
       >
         要約を生成
       </button>

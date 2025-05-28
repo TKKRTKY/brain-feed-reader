@@ -9,6 +9,7 @@ interface LLMConfig {
   temperature: number;
   maxTokens: number;
   systemPrompt: string;
+  summaryMode: 'chapter' | 'highlight';
 }
 
 interface LLMContextType {
@@ -23,6 +24,7 @@ const defaultConfig: LLMConfig = {
   temperature: 0.7,
   maxTokens: 500,
   systemPrompt: '以下のテキストを簡潔に要約してください。日本語の自然な文章で出力してください。プロンプトの解釈やthinkタグなどのメタ情報は含めないでください。',
+  summaryMode: 'chapter',
 };
 
 const LLMContext = createContext<LLMContextType | undefined>(undefined);
@@ -49,6 +51,7 @@ export function LLMProvider({ children }: { children: ReactNode }) {
       temperature: Number(process.env.NEXT_PUBLIC_LLM_TEMPERATURE) || defaultConfig.temperature,
       maxTokens: Number(process.env.NEXT_PUBLIC_LLM_MAX_TOKENS) || defaultConfig.maxTokens,
       systemPrompt: process.env.NEXT_PUBLIC_LLM_SYSTEM_PROMPT || defaultConfig.systemPrompt,
+      summaryMode: 'chapter',
     };
   });
 

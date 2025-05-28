@@ -69,6 +69,10 @@ const ReaderLayout = ({
     setLayout(prev => ({ ...prev, rightPaneWidth: width }));
   };
 
+  const currentContent = chapters[currentChapter]?.href 
+    ? content[chapters[currentChapter].href] || ''
+    : '';
+
   return (
     <div className="flex min-h-screen overflow-hidden">
       <ResizablePane
@@ -102,7 +106,10 @@ const ReaderLayout = ({
             {chapters[currentChapter]?.title}
           </h2>
           {chapters[currentChapter] && (
-            <ContentView content={content[chapters[currentChapter].href] || ''} />
+            <ContentView 
+              content={currentContent}
+              pageIndex={currentChapter}
+            />
           )}
           <div className="flex justify-between items-center py-8 border-t">
             <button
