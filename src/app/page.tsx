@@ -40,7 +40,7 @@ function HomeContent() {
       <h1 className="text-3xl font-bold mb-8 text-center">
         Brain Feed Reader
       </h1>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-8xl mx-auto">
         {state.isLoading ? (
           <div className="flex items-center justify-center min-h-[300px]">
             <div className="text-center">
