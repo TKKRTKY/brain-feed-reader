@@ -15,6 +15,7 @@ interface LLMConfig {
 interface LLMContextType {
   config: LLMConfig;
   updateConfig: (newConfig: Partial<LLMConfig>) => void;
+  generateSummary: (text: string) => Promise<string>;
 }
 
 const defaultConfig: LLMConfig = {
@@ -66,8 +67,34 @@ export function LLMProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const generateSummary = async (text: string): Promise<string> => {
+    const response = await fetch(config.apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.modelName,
+        messages: [
+          { role: "system", content: config.systemPrompt },
+          { role: "user", content: text }
+        ],
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate summary');
+    }
+
+    const data = await response.json();
+    return data.message || data.choices?.[0]?.message?.content || '';
+  };
+
   return (
-    <LLMContext.Provider value={{ config, updateConfig }}>
+    <LLMContext.Provider value={{ config, updateConfig, generateSummary }}>
       {children}
     </LLMContext.Provider>
   );

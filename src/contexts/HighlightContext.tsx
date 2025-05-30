@@ -34,6 +34,7 @@ interface HighlightContextType {
   getSummariesByPage: (pageIndex: number) => Summary[];
   clearHighlights: () => void;
   clearSummaries: () => void;
+  onSummaryCreated?: (summary: Summary) => void;
 }
 
 const HighlightContext = createContext<HighlightContextType | undefined>(undefined);
@@ -109,6 +110,7 @@ export function HighlightProvider({ children }: { children: React.ReactNode }) {
       timestamp: Date.now(),
     };
     setSummaries(prev => [...prev, newSummary]);
+    window.dispatchEvent(new CustomEvent('summaryCreated', { detail: newSummary }));
     return newSummary.id;
   };
 

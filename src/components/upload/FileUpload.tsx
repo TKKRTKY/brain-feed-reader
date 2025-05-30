@@ -28,6 +28,14 @@ export const FileUpload = ({ onFileSelect, onError }: FileUploadProps) => {
       clearHighlights();
       clearSummaries();
 
+      // IndexedDBをクリア
+      const databases = await window.indexedDB.databases();
+      for (const db of databases) {
+        if (db.name) {
+          window.indexedDB.deleteDatabase(db.name);
+        }
+      }
+
       const arrayBuffer = await file.arrayBuffer();
       const epubFile: EPubFile = {
         name: file.name,

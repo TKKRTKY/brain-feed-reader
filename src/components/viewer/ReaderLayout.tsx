@@ -5,6 +5,7 @@ import { BookMetadata, Chapter } from '@/types/epub';
 import ContentView from './ContentView';
 import SummarySection from '../summary/SummarySection';
 import ResizablePane from './ResizablePane';
+import { NoteDialog } from '../note/NoteDialog';
 
 interface ReaderLayoutProps {
   metadata: BookMetadata;
@@ -14,6 +15,11 @@ interface ReaderLayoutProps {
   onChapterSelect: (href: string) => void;
   onPreviousChapter: () => void;
   onNextChapter: () => void;
+}
+
+interface NoteState {
+  isOpen: boolean;
+  position: { x: number; y: number };
 }
 
 interface LayoutState {
@@ -37,6 +43,27 @@ const ReaderLayout = ({
   onPreviousChapter,
   onNextChapter,
 }: ReaderLayoutProps) => {
+  const [note, setNote] = useState<NoteState>({
+    isOpen: false,
+    position: { x: 100, y: 100 },
+  });
+
+  // ノートの表示位置を設定
+  const handleNoteClick = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setNote({
+      isOpen: true,
+      position: {
+        x: Math.min(rect.right, window.innerWidth - 400),
+        y: Math.min(rect.top, window.innerHeight - 300),
+      },
+    });
+  };
+
+  // ノートを閉じる
+  const handleNoteClose = () => {
+    setNote(prev => ({ ...prev, isOpen: false }));
+  };
   const renderChapters = (items: Chapter[], level = 0) => {
     return (
       <ul className={`pl-${level * 4} list-none`}>
@@ -73,8 +100,19 @@ const ReaderLayout = ({
     ? content[chapters[currentChapter].href] || ''
     : '';
 
+  // NoteDialogの表示
+  const noteElement = note.isOpen && (
+    <NoteDialog
+      bookId={metadata.identifier || 'unknown'}
+      chapters={chapters}
+      defaultPosition={note.position}
+      onClose={handleNoteClose}
+    />
+  );
+
   return (
-    <div className="flex min-h-screen overflow-hidden">
+    <>
+      <div className="flex min-h-screen overflow-hidden">
       <ResizablePane
         position="left"
         minWidth={MIN_LEFT_PANE_WIDTH}
@@ -101,7 +139,18 @@ const ReaderLayout = ({
       </ResizablePane>
 
       <main className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto mx-auto max-w-[1200px]">
+        <div className="h-full overflow-y-auto mx-auto max-w-[1200px] relative">
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={handleNoteClick}
+              className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg shadow hover:bg-gray-50"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span>読書メモ</span>
+            </button>
+          </div>
           <h2 className="text-2xl font-bold mb-6">
             {chapters[currentChapter]?.title}
           </h2>
@@ -149,7 +198,9 @@ const ReaderLayout = ({
           />
         </div>
       </ResizablePane>
-    </div>
+      </div>
+      {noteElement}
+    </>
   );
 };
 

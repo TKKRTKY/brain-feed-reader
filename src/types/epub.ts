@@ -10,12 +10,14 @@ export interface BookMetadata {
   language?: string;
   publisher?: string;
   rights?: string;
+  identifier?: string;
 }
 
 export interface Chapter {
   id: string;
   href: string;
   title: string;
-  level: number;
+  content: string;
+  summary?: string;
   children?: Chapter[];
 }
