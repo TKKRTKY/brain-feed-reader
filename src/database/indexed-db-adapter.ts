@@ -1,26 +1,49 @@
-import { DBConfig, STORE_INDEXES, StoreIndex } from './indexed-db';
-import { DatabaseError, NotFoundError, withTransaction, openDatabase } from './utils';
-import { QueryOptions, queryByIndex, findByField, getAll } from './query-helpers';
+import { DatabaseAdapter, WebDatabaseConfig } from './adapter';
+import { DatabaseError, NotFoundError } from './utils';
 
-export class IndexedDBAdapter {
+export interface StoreIndex {
+  name: string;
+  keyPath: string | string[];
+  options?: IDBIndexParameters;
+}
+
+export interface DBConfig extends WebDatabaseConfig {
+  stores: Record<string, string>;
+  indexes?: Record<string, StoreIndex[]>;
+}
+
+export class IndexedDBAdapter implements DatabaseAdapter {
   private db: IDBDatabase | null = null;
   private config: DBConfig;
 
-  constructor(config: DBConfig) {
-    this.config = config;
+  constructor(config: WebDatabaseConfig) {
+    this.config = {
+      ...config,
+      stores: {
+        books: 'id',
+        highlights: 'id',
+        notes: 'id'
+      },
+      indexes: {
+        highlights: [
+          { name: 'bookId', keyPath: 'bookId' }
+        ],
+        notes: [
+          { name: 'bookId', keyPath: 'bookId' }
+        ]
+      }
+    };
   }
 
   /**
    * データベースの初期化
    */
   async initialize(): Promise<void> {
-    if (this.db) {
-      return;
-    }
+    if (this.db) return;
 
     try {
       const request = indexedDB.open(this.config.name, this.config.version);
-
+      
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as IDBOpenDBRequest).result;
         this.handleUpgrade(db);
@@ -31,179 +54,182 @@ export class IndexedDBAdapter {
         request.onsuccess = () => resolve(request.result);
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new DatabaseError(`Failed to initialize database: ${errorMessage}`);
+      throw new DatabaseError(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * レコードの作成
+   * 基本CRUD操作
    */
-  async create<T extends { id: string }>(store: string, data: T): Promise<T> {
-    if (!this.db) {
-      throw new DatabaseError('Database not initialized');
-    }
-
-    return withTransaction(this.db, [store], 'readwrite', async (tx) => {
-      const objectStore = tx.objectStore(store);
-      await new Promise<void>((resolve, reject) => {
-        const request = objectStore.add(data);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve();
-      });
+  async create<T extends { id: string }>(table: string, data: T): Promise<T> {
+    return this.withTransaction([table], 'readwrite', async (tx) => {
+      const store = tx.objectStore(table);
+      await this.request(store.add(data));
       return data;
     });
   }
 
-  /**
-   * レコードの読み取り
-   */
-  async read<T>(store: string, id: string): Promise<T> {
-    if (!this.db) {
-      throw new DatabaseError('Database not initialized');
-    }
-
-    return withTransaction(this.db, [store], 'readonly', async (tx) => {
-      const objectStore = tx.objectStore(store);
-      const result = await new Promise<T>((resolve, reject) => {
-        const request = objectStore.get(id);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-      });
-
-      if (!result) {
-        throw new NotFoundError(store, id);
-      }
-
+  async read<T>(table: string, id: string): Promise<T> {
+    return this.withTransaction([table], 'readonly', async (tx) => {
+      const store = tx.objectStore(table);
+      const result = await this.request<T>(store.get(id));
+      if (!result) throw new NotFoundError(table, id);
       return result;
     });
   }
 
-  /**
-   * レコードの更新
-   */
-  async update<T extends { id: string }>(store: string, id: string, data: Partial<T>): Promise<T> {
-    if (!this.db) {
-      throw new DatabaseError('Database not initialized');
-    }
-
-    return withTransaction(this.db, [store], 'readwrite', async (tx) => {
-      const objectStore = tx.objectStore(store);
-      const existing = await new Promise<T>((resolve, reject) => {
-        const request = objectStore.get(id);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-      });
-
-      if (!existing) {
-        throw new NotFoundError(store, id);
-      }
-
+  async update<T extends { id: string }>(table: string, id: string, data: Partial<T>): Promise<T> {
+    return this.withTransaction([table], 'readwrite', async (tx) => {
+      const store = tx.objectStore(table);
+      const existing = await this.request<T>(store.get(id));
+      if (!existing) throw new NotFoundError(table, id);
+      
       const updated = { ...existing, ...data };
-      await new Promise<void>((resolve, reject) => {
-        const request = objectStore.put(updated);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve();
-      });
-
+      await this.request(store.put(updated));
       return updated;
     });
   }
 
-  /**
-   * レコードの削除
-   */
-  async delete(store: string, id: string): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseError('Database not initialized');
-    }
-
-    return withTransaction(this.db, [store], 'readwrite', async (tx) => {
-      const objectStore = tx.objectStore(store);
-      await new Promise<void>((resolve, reject) => {
-        const request = objectStore.delete(id);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve();
-      });
+  async delete(table: string, id: string): Promise<void> {
+    return this.withTransaction([table], 'readwrite', async (tx) => {
+      const store = tx.objectStore(table);
+      await this.request(store.delete(id));
     });
   }
 
   /**
-   * クエリの実行
+   * クエリと検索
    */
-  async query<T>(store: string, options: {
-    index?: string;
-    value?: any;
-    range?: { lower: any; upper: any };
-    limit?: number;
-    offset?: number;
-    direction?: IDBCursorDirection;
-  }): Promise<T[]> {
-    if (!this.db) {
-      throw new DatabaseError('Database not initialized');
-    }
-
-    return withTransaction(this.db, [store], 'readonly', async (tx) => {
-      const objectStore = tx.objectStore(store);
-      const queryOptions: QueryOptions = {
-        direction: options.direction,
-        limit: options.limit,
-        offset: options.offset
-      };
-
-      if (options.index && options.value !== undefined) {
-        return findByField(objectStore, options.index, options.value, queryOptions);
+  async query<T>(table: string, filter: object): Promise<T[]> {
+    return this.withTransaction([table], 'readonly', async (tx) => {
+      const store = tx.objectStore(table);
+      const entries: T[] = [];
+      
+      // フィルタの条件に基づいてクエリを実行
+      for (const [key, value] of Object.entries(filter)) {
+        if (store.indexNames.contains(key)) {
+          const index = store.index(key);
+          const cursor = await this.request<IDBCursorWithValue>(index.openCursor(value));
+          while (cursor) {
+            entries.push(cursor.value);
+            await this.request(cursor.continue());
+          }
+          return entries;
+        }
       }
-
-      if (options.range) {
-        const { lower, upper } = options.range;
-        const range = IDBKeyRange.bound(lower, upper);
-        return queryByIndex(objectStore, options.index || '', range, queryOptions);
-      }
-
-      return getAll(objectStore, queryOptions);
+      
+      // フィルタが指定されていない場合は全件取得
+      return this.request<T[]>(store.getAll());
     });
   }
 
+  async findOne<T>(table: string, filter: object): Promise<T | null> {
+    const results = await this.query<T>(table, filter);
+    return results.length > 0 ? results[0] : null;
+  }
+
   /**
-   * トランザクションの実行
+   * トランザクション
    */
   async transaction<T>(operations: () => Promise<T>): Promise<T> {
-    if (!this.db) {
-      throw new DatabaseError('Database not initialized');
-    }
-
+    if (!this.db) throw new DatabaseError('Database not initialized');
     return operations();
   }
 
   /**
-   * データベースのクローズ
+   * バッチ操作
    */
-  close(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
+  async createMany<T extends { id: string }>(table: string, items: T[]): Promise<T[]> {
+    return this.withTransaction([table], 'readwrite', async (tx) => {
+      const store = tx.objectStore(table);
+      for (const item of items) {
+        await this.request(store.add(item));
+      }
+      return items;
+    });
+  }
+
+  async updateMany<T extends { id: string }>(
+    table: string,
+    items: { id: string; data: Partial<T> }[]
+  ): Promise<T[]> {
+    return this.withTransaction([table], 'readwrite', async (tx) => {
+      const store = tx.objectStore(table);
+      const updated: T[] = [];
+      
+      for (const { id, data } of items) {
+        const existing = await this.request<T>(store.get(id));
+        if (!existing) throw new NotFoundError(table, id);
+        
+        const updatedItem = { ...existing, ...data };
+        await this.request(store.put(updatedItem));
+        updated.push(updatedItem);
+      }
+      
+      return updated;
+    });
+  }
+
+  async deleteMany(table: string, ids: string[]): Promise<void> {
+    return this.withTransaction([table], 'readwrite', async (tx) => {
+      const store = tx.objectStore(table);
+      for (const id of ids) {
+        await this.request(store.delete(id));
+      }
+    });
   }
 
   /**
-   * アップグレードハンドラー
+   * ユーティリティメソッド
    */
+  private async withTransaction<T>(
+    storeNames: string[],
+    mode: IDBTransactionMode,
+    operation: (tx: IDBTransaction) => Promise<T>
+  ): Promise<T> {
+    if (!this.db) {
+      await this.initialize();
+    }
+    if (!this.db) throw new DatabaseError('Failed to initialize database');
+
+    const tx = this.db.transaction(storeNames, mode);
+    const result = await operation(tx);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    return result;
+  }
+
+  private request<T>(request: IDBRequest): Promise<T> {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   private handleUpgrade(db: IDBDatabase): void {
-    const stores = this.config.stores;
+    const { stores, indexes } = this.config;
 
     for (const [storeName, keyPath] of Object.entries(stores)) {
       if (!db.objectStoreNames.contains(storeName)) {
         const store = db.createObjectStore(storeName, { keyPath });
         
         // インデックスの作成
-        const indexes = STORE_INDEXES[storeName];
-        if (indexes) {
-          for (const index of indexes) {
+        const storeIndexes = indexes?.[storeName];
+        if (storeIndexes) {
+          for (const index of storeIndexes) {
             store.createIndex(index.name, index.keyPath, index.options);
           }
         }
       }
+    }
+  }
+
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
     }
   }
 }
