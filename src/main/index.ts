@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import serve from 'electron-serve';
 import Store from 'electron-store';
 import * as path from 'path';
+import { DatabaseIPC } from './ipc/database';
 
 // 環境変数の設定は削除し、アプリケーション起動時に判定
 const isDev = process.env.NODE_ENV === 'development';
@@ -96,6 +97,9 @@ function createWindow() {
 
 // アプリケーションの初期化
 app.whenReady().then(() => {
+  // データベースIPCの初期化
+  new DatabaseIPC();
+  
   createWindow();
 
   // macOS向けのドック動作の最適化

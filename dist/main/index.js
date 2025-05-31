@@ -40,6 +40,7 @@ const electron_1 = require("electron");
 const electron_serve_1 = __importDefault(require("electron-serve"));
 const electron_store_1 = __importDefault(require("electron-store"));
 const path = __importStar(require("path"));
+const database_1 = require("./ipc/database");
 // 環境変数の設定は削除し、アプリケーション起動時に判定
 const isDev = process.env.NODE_ENV === 'development';
 const loadURL = (0, electron_serve_1.default)({ directory: 'out' });
@@ -100,6 +101,8 @@ function createWindow() {
 }
 // アプリケーションの初期化
 electron_1.app.whenReady().then(() => {
+    // データベースIPCの初期化
+    new database_1.DatabaseIPC();
     createWindow();
     // macOS向けのドック動作の最適化
     electron_1.app.on('activate', () => {
