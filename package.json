@@ -6,7 +6,29 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "electron-dev": "rm -rf dist && tsc -p tsconfig.electron.json && concurrently \"cross-env NODE_ENV=development next dev --turbopack --port 3000\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron-build": "next build && tsc -p tsconfig.electron.json && electron-builder",
+    "electron-pack": "npm run build && npm run electron-build",
+    "package-mac": "electron-builder -m",
+    "package-win": "electron-builder -w",
+    "package-linux": "electron-builder -l"
+  },
+  "main": "dist/main/index.js",
+  "build": {
+    "appId": "com.brainfeed.reader",
+    "productName": "Brain Feed Reader",
+    "mac": {
+      "category": "public.app-category.education"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "public"
+    },
+    "files": [
+      "out/**/*",
+      "dist/**/*"
+    ]
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.2",
@@ -32,10 +54,18 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/sanitize-html": "^2.16.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^36.3.2",
+    "electron-builder": "^26.0.12",
+    "electron-serve": "^2.1.1",
+    "electron-store": "^10.0.1",
     "eslint": "^9",
     "eslint-config-next": "15.1.8",
+    "nodemon": "^3.1.10",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^8.0.3"
   }
 }
