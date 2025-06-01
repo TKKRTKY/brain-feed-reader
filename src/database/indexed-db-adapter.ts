@@ -109,12 +109,19 @@ export class IndexedDBAdapter implements DatabaseAdapter {
       for (const [key, value] of Object.entries(filter)) {
         if (store.indexNames.contains(key)) {
           const index = store.index(key);
-          const cursor = await this.request<IDBCursorWithValue>(index.openCursor(value));
-          while (cursor) {
-            entries.push(cursor.value);
-            await this.request(cursor.continue());
-          }
-          return entries;
+          return new Promise((resolve, reject) => {
+            const request = index.openCursor(value);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const cursor = request.result;
+              if (cursor) {
+                entries.push(cursor.value);
+                cursor.continue();
+              } else {
+                resolve(entries);
+              }
+            };
+          });
         }
       }
       
@@ -231,5 +238,72 @@ export class IndexedDBAdapter implements DatabaseAdapter {
       this.db.close();
       this.db = null;
     }
+  }
+
+  async execute(query: string, params: any[] = []): Promise<any> {
+    // IndexedDBはSQLをサポートしていないため、基本的なCRUD操作のみをサポート
+    const operation = query.trim().split(' ')[0].toUpperCase();
+    const table = query.match(/(?:FROM|INTO|UPDATE)\s+(\w+)/i)?.[1];
+
+    if (!table) {
+      throw new DatabaseError('無効なクエリ: テーブル名が見つかりません');
+    }
+
+    switch (operation) {
+      case 'SELECT':
+        return this.handleSelect(query, params);
+      case 'INSERT':
+        return this.handleInsert(table, params);
+      case 'UPDATE':
+        return this.handleUpdate(table, query, params);
+      case 'DELETE':
+        return this.handleDelete(table, query, params);
+      case 'CREATE':
+        if (query.includes('CREATE TABLE')) {
+          // テーブル作成は初期化時に処理されるため、何もしない
+          return Promise.resolve();
+        }
+        break;
+      default:
+        throw new DatabaseError(`未サポートの操作です: ${operation}`);
+    }
+  }
+
+  private async handleSelect(query: string, params: any[]): Promise<any[]> {
+    const table = query.match(/FROM\s+(\w+)/i)?.[1];
+    if (!table) {
+      throw new DatabaseError('無効なSELECTクエリ');
+    }
+    return this.query(table, {});
+  }
+
+  private async handleInsert(table: string, params: any[]): Promise<any> {
+    if (params.length < 2) {
+      throw new DatabaseError('INSERTに必要なパラメータが不足しています');
+    }
+    const data = {
+      id: params[0],
+      ...params[1]
+    };
+    return this.create(table, data);
+  }
+
+  private async handleUpdate(table: string, query: string, params: any[]): Promise<any> {
+    const whereMatch = query.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+    if (!whereMatch || params.length < 2) {
+      throw new DatabaseError('無効なUPDATEクエリ');
+    }
+    const id = params[params.length - 1];
+    const data = params[0];
+    return this.update(table, id, data);
+  }
+
+  private async handleDelete(table: string, query: string, params: any[]): Promise<void> {
+    const whereMatch = query.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+    if (!whereMatch || params.length < 1) {
+      throw new DatabaseError('無効なDELETEクエリ');
+    }
+    const id = params[0];
+    return this.delete(table, id);
   }
 }

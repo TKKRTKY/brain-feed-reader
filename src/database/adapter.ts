@@ -19,6 +19,9 @@ export interface DatabaseAdapter {
   createMany<T extends { id: string }>(table: string, items: T[]): Promise<T[]>;
   updateMany<T extends { id: string }>(table: string, items: { id: string; data: Partial<T> }[]): Promise<T[]>;
   deleteMany(table: string, ids: string[]): Promise<void>;
+  
+  // SQL実行
+  execute(query: string, params?: any[]): Promise<any>;
 }
 
 /**

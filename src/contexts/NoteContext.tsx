@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { useStorage } from './StorageContext';
+import { DatabaseError } from '../database/utils';
 
 export interface Note {
   id: string;
@@ -22,6 +24,7 @@ interface NoteContextType {
   exportNote: (id: string) => Promise<void>;
   renderMarkdown: (content: string) => Promise<string>;
   isReady: boolean;
+  error: Error | null;
 }
 
 const NoteContext = createContext<NoteContextType | undefined>(undefined);
@@ -29,39 +32,12 @@ const NoteContext = createContext<NoteContextType | undefined>(undefined);
 export function NoteProvider({ children }: { children: React.ReactNode }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
-  const [db, setDb] = useState<IDBDatabase | null>(null);
-
-  // IndexedDBの初期化
-  useEffect(() => {
-    const request = indexedDB.open('BrainFeedNotes', 1);
-
-    request.onerror = () => {
-      console.error('Failed to open IndexedDB');
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('notes')) {
-        const store = db.createObjectStore('notes', { keyPath: 'id' });
-        store.createIndex('bookId', 'bookId', { unique: false });
-        store.createIndex('chapterId', 'chapterId', { unique: false });
-      }
-    };
-
-    request.onsuccess = (event) => {
-      setDb((event.target as IDBOpenDBRequest).result);
-    };
-
-    return () => {
-      if (db) {
-        db.close();
-      }
-    };
-  }, []);
+  const [error, setError] = useState<Error | null>(null);
+  const { adapter, isInitialized } = useStorage();
 
   // ノートの作成
   const createNote = async (note: Omit<Note, 'id' | 'lastModified'>): Promise<Note> => {
-    if (!db) throw new Error('Database not initialized');
+    if (!adapter) throw new Error('ストレージが初期化されていません');
 
     const newNote: Note = {
       ...note,
@@ -69,70 +45,53 @@ export function NoteProvider({ children }: { children: React.ReactNode }) {
       lastModified: Date.now(),
     };
 
-    const transaction = db.transaction(['notes'], 'readwrite');
-    const store = transaction.objectStore('notes');
-
-    return new Promise((resolve, reject) => {
-      const request = store.add(newNote);
-      request.onerror = () => reject(new Error('Failed to create note'));
-      request.onsuccess = () => {
-        setNotes(prev => [...prev, newNote]);
-        resolve(newNote);
-      };
-    });
+    try {
+      await adapter.create('notes', newNote);
+      setNotes(prev => [...prev, newNote]);
+      return newNote;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '不明なエラー';
+      throw new DatabaseError(`ノートの作成に失敗しました: ${message}`);
+    }
   };
 
   // ノートの更新
   const updateNote = async (id: string, content: string): Promise<void> => {
-    if (!db) throw new Error('Database not initialized');
+    if (!adapter) throw new Error('ストレージが初期化されていません');
 
-    const transaction = db.transaction(['notes'], 'readwrite');
-    const store = transaction.objectStore('notes');
-
-    return new Promise((resolve, reject) => {
-      const request = store.get(id);
-      request.onerror = () => reject(new Error('Failed to update note'));
-      request.onsuccess = () => {
-        const note = request.result;
-        if (!note) {
-          reject(new Error('Note not found'));
-          return;
-        }
-
-        note.content = content;
-        note.lastModified = Date.now();
-
-        const updateRequest = store.put(note);
-        updateRequest.onerror = () => reject(new Error('Failed to save note update'));
-        updateRequest.onsuccess = () => {
-          setNotes(prev => prev.map(n => n.id === id ? note : n));
-          if (currentNote?.id === id) {
-            setCurrentNote(note);
-          }
-          resolve();
-        };
+    try {
+      const note = await adapter.read<Note>('notes', id);
+      const updatedNote = {
+        ...note,
+        content,
+        lastModified: Date.now()
       };
-    });
+
+      await adapter.update('notes', id, updatedNote);
+      setNotes(prev => prev.map(n => n.id === id ? updatedNote : n));
+      if (currentNote?.id === id) {
+        setCurrentNote(updatedNote);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '不明なエラー';
+      throw new DatabaseError(`ノートの更新に失敗しました: ${message}`);
+    }
   };
 
   // ノートの削除
   const deleteNote = async (id: string): Promise<void> => {
-    if (!db) throw new Error('Database not initialized');
+    if (!adapter) throw new Error('ストレージが初期化されていません');
 
-    const transaction = db.transaction(['notes'], 'readwrite');
-    const store = transaction.objectStore('notes');
-
-    return new Promise((resolve, reject) => {
-      const request = store.delete(id);
-      request.onerror = () => reject(new Error('Failed to delete note'));
-      request.onsuccess = () => {
-        setNotes(prev => prev.filter(note => note.id !== id));
-        if (currentNote?.id === id) {
-          setCurrentNote(null);
-        }
-        resolve();
-      };
-    });
+    try {
+      await adapter.delete('notes', id);
+      setNotes(prev => prev.filter(note => note.id !== id));
+      if (currentNote?.id === id) {
+        setCurrentNote(null);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '不明なエラー';
+      throw new DatabaseError(`ノートの削除に失敗しました: ${message}`);
+    }
   };
 
   // Markdownのエクスポート
@@ -159,20 +118,23 @@ export function NoteProvider({ children }: { children: React.ReactNode }) {
 
   // 初期データの読み込み
   useEffect(() => {
-    if (!db) return;
+    if (!adapter || !isInitialized) return;
 
-    const transaction = db.transaction(['notes'], 'readonly');
-    const store = transaction.objectStore('notes');
-    const request = store.getAll();
-
-    request.onerror = () => {
-      console.error('Failed to load notes');
+    const loadNotes = async () => {
+      try {
+        const loadedNotes = await adapter.query<Note>('notes', {});
+        setNotes(loadedNotes);
+        setError(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '不明なエラー';
+        const dbError = new DatabaseError(`ノートの読み込みに失敗しました: ${message}`);
+        setError(dbError);
+        console.error(dbError);
+      }
     };
 
-    request.onsuccess = () => {
-      setNotes(request.result);
-    };
-  }, [db]);
+    loadNotes();
+  }, [adapter, isInitialized]);
 
   const value = {
     notes,
@@ -183,7 +145,8 @@ export function NoteProvider({ children }: { children: React.ReactNode }) {
     setCurrentNote,
     exportNote,
     renderMarkdown,
-    isReady: db !== null,
+    isReady: isInitialized && !error,
+    error
   };
 
   return <NoteContext.Provider value={value}>{children}</NoteContext.Provider>;

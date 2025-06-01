@@ -52,6 +52,30 @@ export default function NotePage() {
     }
   };
 
+  const { isReady, error } = useNotes();
+
+  if (!isReady) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-2">読書メモを準備中です...</h2>
+          <p className="text-gray-600">しばらくお待ちください</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center text-red-600">
+          <h2 className="text-xl font-semibold mb-2">エラーが発生しました</h2>
+          <p className="text-gray-600">{error.message}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
       <div className="p-4 border-b">

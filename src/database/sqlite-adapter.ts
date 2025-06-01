@@ -1,200 +1,81 @@
 import { DatabaseAdapter, ElectronDatabaseConfig } from './adapter';
 import { DatabaseError, NotFoundError } from './utils';
-import Database from 'better-sqlite3';
 
 export class SQLiteAdapter implements DatabaseAdapter {
-  private db: Database.Database;
+  private config: ElectronDatabaseConfig;
 
   constructor(config: ElectronDatabaseConfig) {
-    this.db = new Database(config.filename, config.options);
-    this.setupDatabase();
+    this.config = config;
   }
 
-  /**
-   * データベースのセットアップ
-   */
-  private setupDatabase(): void {
-    // テーブルの作成
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS books (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        path TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS highlights (
-        id TEXT PRIMARY KEY,
-        book_id TEXT NOT NULL,
-        text TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS notes (
-        id TEXT PRIMARY KEY,
-        book_id TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_highlights_book_id ON highlights(book_id);
-      CREATE INDEX IF NOT EXISTS idx_notes_book_id ON notes(book_id);
-    `);
-  }
-
-  /**
-   * 基本CRUD操作
-   */
-  async create<T extends { id: string }>(table: string, data: T): Promise<T> {
-    const columns = Object.keys(data);
-    const values = Object.values(data);
-    const placeholders = columns.map(() => '?').join(', ');
-    
-    const stmt = this.db.prepare(
-      `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
-    );
-    
-    try {
-      stmt.run(...values);
-      return data;
-    } catch (error) {
-      throw new DatabaseError(`Failed to create record in ${table}: ${error}`);
+  private async callIPC<T>(type: string, table: string, data?: any): Promise<T> {
+    // @ts-ignore
+    if (!window.database) {
+      throw new Error('Database bridge is not available');
     }
+
+    try {
+      // @ts-ignore
+      return await window.database[type](table, data);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new DatabaseError(`Database operation failed: ${error}`);
+    }
+  }
+
+  async create<T extends { id: string }>(table: string, data: T): Promise<T> {
+    return await this.callIPC<T>('create', table, data);
   }
 
   async read<T>(table: string, id: string): Promise<T> {
-    const stmt = this.db.prepare(`SELECT * FROM ${table} WHERE id = ?`);
-    const result = stmt.get(id) as T;
-    
-    if (!result) {
-      throw new NotFoundError(table, id);
-    }
-    
-    return result;
+    return this.callIPC<T>('read', table, id);
   }
 
   async update<T extends { id: string }>(table: string, id: string, data: Partial<T>): Promise<T> {
-    const updates = Object.entries(data)
-      .filter(([key]) => key !== 'id')
-      .map(([key]) => `${key} = ?`)
-      .join(', ');
-    
-    const values = Object.entries(data)
-      .filter(([key]) => key !== 'id')
-      .map(([, value]) => value);
-    
-    const stmt = this.db.prepare(
-      `UPDATE ${table} SET ${updates} WHERE id = ?`
-    );
-    
-    try {
-      const result = stmt.run(...values, id);
-      if (result.changes === 0) {
-        throw new NotFoundError(table, id);
-      }
-      
-      return this.read<T>(table, id);
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        throw error;
-      }
-      throw new DatabaseError(`Failed to update record in ${table}: ${error}`);
-    }
+    return this.callIPC<T>('update', table, { id, data });
   }
 
   async delete(table: string, id: string): Promise<void> {
-    const stmt = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`);
-    const result = stmt.run(id);
-    
-    if (result.changes === 0) {
-      throw new NotFoundError(table, id);
-    }
+    return this.callIPC<void>('delete', table, id);
   }
 
-  /**
-   * クエリと検索
-   */
   async query<T>(table: string, filter: object): Promise<T[]> {
-    const conditions = Object.entries(filter)
-      .map(([key]) => `${key} = ?`)
-      .join(' AND ');
-    
-    const values = Object.values(filter);
-    const query = conditions
-      ? `SELECT * FROM ${table} WHERE ${conditions}`
-      : `SELECT * FROM ${table}`;
-    
-    const stmt = this.db.prepare(query);
-    return stmt.all(...values) as T[];
+    return this.callIPC<T[]>('query', table, filter);
   }
 
-  async findOne<T>(table: string, filter: object): Promise<T | null> {
-    const results = await this.query<T>(table, filter);
-    return results.length > 0 ? results[0] : null;
+  // 以下のメソッドはIPC通信を介して実装する必要がある場合のみ使用
+  findOne<T>(table: string, filter: object): Promise<T | null> {
+    return this.query<T>(table, filter).then(results => results[0] || null);
   }
 
-  /**
-   * トランザクション
-   */
-  async transaction<T>(operations: () => Promise<T>): Promise<T> {
-    return this.db.transaction(async () => {
-      return operations();
-    })();
+  transaction<T>(_operations: () => Promise<T>): Promise<T> {
+    throw new Error('Transactions are not supported in the Web environment');
   }
 
-  /**
-   * バッチ操作
-   */
-  async createMany<T extends { id: string }>(table: string, items: T[]): Promise<T[]> {
-    if (items.length === 0) return [];
-
-    const columns = Object.keys(items[0]);
-    const placeholders = columns.map(() => '?').join(', ');
-    const stmt = this.db.prepare(
-      `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
-    );
-
-    return this.db.transaction(() => {
-      for (const item of items) {
-        stmt.run(...Object.values(item));
-      }
-      return items;
-    })();
+  createMany<T extends { id: string }>(table: string, items: T[]): Promise<T[]> {
+    return Promise.all(items.map(item => this.create(table, item)));
   }
 
-  async updateMany<T extends { id: string }>(
+  updateMany<T extends { id: string }>(
     table: string,
     items: { id: string; data: Partial<T> }[]
   ): Promise<T[]> {
-    return this.db.transaction(async () => {
-      const updated: T[] = [];
-      for (const { id, data } of items) {
-        const result = await this.update<T>(table, id, data);
-        updated.push(result);
-      }
-      return updated;
-    })();
-  }
-
-  async deleteMany(table: string, ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-
-    const placeholders = ids.map(() => '?').join(', ');
-    const stmt = this.db.prepare(
-      `DELETE FROM ${table} WHERE id IN (${placeholders})`
+    return Promise.all(
+      items.map(({ id, data }) => this.update(table, id, data))
     );
-    
-    stmt.run(...ids);
   }
 
-  /**
-   * データベースの終了処理
-   */
+  deleteMany(table: string, ids: string[]): Promise<void> {
+    return Promise.all(ids.map(id => this.delete(table, id))).then(() => {});
+  }
+
+  execute(_query: string, _params: any[] = []): Promise<any> {
+    throw new Error('Direct query execution is not supported in the Web environment');
+  }
+
   close(): void {
-    this.db.close();
+    // 実際のデータベースのクローズはメインプロセスで処理
   }
 }

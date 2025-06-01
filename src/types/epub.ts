@@ -17,7 +17,8 @@ export interface Chapter {
   id: string;
   href: string;
   title: string;
-  content: string;
+  content?: string;  // コンテンツは必須ではない（目次のみの場合もある）
   summary?: string;
   children?: Chapter[];
+  level: number;     // 章の階層レベル（1: 章、2: 節、3: 項など）
 }
